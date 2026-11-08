@@ -71,11 +71,12 @@ export function carComparison({
   loanYears,
   periodsPerYear,
   depreciation,
+  includeCarValue = true,
   returnRate,
   compoundPerYear,
-  inflation,
   years,
 }) {
+  const countCars = includeCarValue !== false;
   if (!Number.isFinite(cheapPrice) || cheapPrice < 0) throw new Error("Enter a cheaper car price of zero or more.");
   if (!Number.isFinite(expensivePrice) || expensivePrice < 0) throw new Error("Enter a more expensive car price of zero or more.");
   if (!Number.isFinite(downPayment) || downPayment < 0) throw new Error("Enter a down payment of zero or more.");
@@ -83,8 +84,6 @@ export function carComparison({
   if (!Number.isFinite(depreciation) || depreciation < 0 || depreciation > 1) {
     throw new Error("Depreciation must be from 0% to 100%.");
   }
-  if (!Number.isFinite(inflation)) throw new Error("Enter an inflation rate.");
-  if (inflation <= -1) throw new Error("Inflation must be above -100%.");
   periodicRate(returnRate, compoundPerYear);
 
   const principal = Math.max(0, expensivePrice - downPayment);
@@ -116,7 +115,7 @@ export function carComparison({
     return {
       year,
       cheap: cheapPrice * kept + cheapInvest,
-      expensive: expensivePrice * kept + expensiveInvest - balance,
+      expensive: expensivePrice * (countCars ? kept : 0) + expensiveInvest - balance,
       investment: cheapInvest,
       loanBalance: balance,
     };
@@ -147,15 +146,13 @@ export function carComparison({
     cheapNet: last.cheap,
     expensiveNet: last.expensive,
     ahead,
-    inflation,
-    cheapToday: buyingPower(last.cheap, last.year, inflation),
-    expensiveToday: buyingPower(last.expensive, last.year, inflation),
     investment: last.investment,
     loanBalance: last.loanBalance,
     interestPaid,
     lumpCheap,
     lumpExpensive,
     investedPayments,
+    includeCarValue: countCars,
     series: thinSeries(series),
   };
 }
@@ -270,7 +267,41 @@ export function loanSummary({
     interestSaved: baseline.totalInterest - schedule.totalInterest,
     oneTimeApplied: Boolean(oneTimeRow),
     oneTimeAppliedDate: oneTimeRow?.date || "",
+    series: loanBalanceSeries(
+      principal,
+      periodsPerYear,
+      baseline.rows,
+      schedule.rows,
+      extraPerPeriod > 0 || oneTimeAmount > 0
+    ),
   };
+}
+
+function loanBalanceSeries(principal, periodsPerYear, baselineRows, actualRows, showExtra) {
+  const count = Math.max(baselineRows.length, actualRows.length);
+  const points = [];
+  let owed = principal;
+  let accelerated = principal;
+  let interestCents = 0;
+
+  for (let period = 0; period <= count; period += 1) {
+    if (period > 0) {
+      const regular = baselineRows[period - 1];
+      const faster = actualRows[period - 1];
+      if (regular) owed = regular.balance;
+      if (faster) {
+        accelerated = faster.balance;
+        interestCents += Math.round(faster.interest * 100);
+      } else {
+        accelerated = 0;
+      }
+    }
+    const point = { year: period / periodsPerYear, balance: owed, interest: interestCents / 100 };
+    if (showExtra) point.extraBalance = period === 0 ? principal : accelerated;
+    points.push(point);
+  }
+
+  return points;
 }
 
 function countPeriods(years, periodsPerYear, label = "time period", { allowEmpty = false, max = 1200 } = {}) {

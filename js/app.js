@@ -91,17 +91,17 @@ const HELP = {
     loanRate: "The yearly interest rate on the expensive car's loan. Enter 6.5 for 6.5%.",
     loanYears: "How many years you have to pay off the expensive car.",
     periodsPerYear: "How many loan payments are made each year. Skipped payments are invested on this same schedule.",
+    includeCarValue:
+      "Adds what the expensive car is still worth after yearly depreciation. Turn this off to leave that car out. The cheap car's remaining value is always included.",
     depreciation: "How much of each car's price it loses each year. Enter 15 for 15%. The same rate is used for both cars.",
     returnRate: "How much you expect the invested money to grow each year. Enter 8 for 8%.",
     compoundPerYear: "How often growth is added to the investment. Once it is added, it can grow too.",
-    inflation: "How much prices rise each year. Enter 3 for 3%. Results in today's dollars use this rate.",
     years: "How long to run the comparison. It can be longer or shorter than the loan.",
-    "Ahead with the cheap car": "How much more you have with the cheap car and the investment than with the financed car.",
-    "Ahead with the expensive car": "How much more you have financing the expensive car than buying the cheap one and investing.",
-    "Cheap car path": "The cheap car's value plus the investment account.",
-    "Expensive car path": "The expensive car's value, plus any cash that path invested, minus the loan still owed.",
-    "Cheap car today": "The cheap-car result in today's buying power.",
-    "Expensive car today": "The expensive-car result in today's buying power.",
+    "Ahead with the cheap car": "How much more the cheap-car path is worth than the financed-car path.",
+    "Ahead with the expensive car": "How much more the financed-car path is worth than the cheap-car path.",
+    "Cheap car net value plus investment": "The cheap car's remaining value plus the investment account.",
+    "Expensive car net value": "The expensive car's remaining value, plus any cash that path invested, minus the loan still owed.",
+    "Expensive car path cash": "Cash invested on this path, minus the loan still owed. The expensive car's remaining value is left out.",
     "Loan payment": "The payment due each period on the expensive car.",
     "Investment account": "Money invested because you bought the cheaper car. The car itself is not included.",
     "Interest paid": "Interest charged on the loan payments that fall inside the comparison.",
@@ -140,26 +140,28 @@ const MODES = {
           { value: "simple", label: "Simple" },
         ],
       },
-      { name: "principal", label: "Starting value", prefix: "$", value: "10000", min: "0", step: "0.01" },
-      { name: "annualRate", label: "Expected annual return", suffix: "%", value: "8", step: "0.01" },
-      { name: "inflation", label: "Inflation", suffix: "%", value: "3", step: "0.01" },
-      { name: "years", label: "Years", value: "10", min: "0.1", step: "0.5" },
+      { name: "principal", label: "Starting value", row: "growth", prefix: "$", value: "10000", min: "0", step: "0.01" },
       {
         name: "periodsPerYear",
         label: "Compounding",
+        row: "growth",
         type: "select",
         value: "12",
         options: FREQUENCIES.filter((option) => option.value !== "2"),
         when: (values) => values.interestType !== "simple",
       },
-      { name: "contribution", label: "Contribution each period", prefix: "$", value: "200", min: "0", step: "0.01" },
+      { name: "contribution", label: "Contribution each period", row: "growth", prefix: "$", value: "200", min: "0", step: "0.01" },
+      { name: "annualRate", label: "Expected annual return", row: "contributions", suffix: "%", value: "8", step: "0.01" },
+      { name: "years", label: "Years", row: "contributions", value: "10", min: "0.1", step: "0.5" },
       {
         name: "contributionFrequency",
         label: "Contribution frequency",
+        row: "contributions",
         type: "select",
         value: "12",
         options: CONTRIBUTION_FREQUENCIES,
       },
+      { name: "inflation", label: "Inflation", row: "prices", suffix: "%", value: "3", step: "0.01" },
     ],
     calculate: (input) => stockGrowth({ ...input, contributionPerYear: input.contributionFrequency }),
     render: renderStock,
@@ -242,20 +244,21 @@ const MODES = {
     label: "Loans",
     blurb: "Level payment that pays down a balance. Add an extra amount every period, or a one-time extra payment on a chosen date.",
     fields: [
-      { name: "principal", label: "Amount borrowed", prefix: "$", value: "25000", min: "0", step: "0.01" },
-      { name: "annualRate", label: "Annual interest rate", suffix: "%", value: "6.5", step: "0.01" },
-      { name: "years", label: "Years", value: "5", min: "0.1", step: "0.5" },
+      { name: "principal", label: "Amount borrowed", group: "loan", prefix: "$", value: "25000", min: "0", step: "0.01" },
+      { name: "annualRate", label: "Annual interest rate", group: "loan", suffix: "%", value: "6.5", step: "0.01" },
+      { name: "years", label: "Years", group: "loan", value: "5", min: "0.1", step: "0.5" },
       {
         name: "periodsPerYear",
         label: "Payments per year",
+        group: "loan",
         type: "select",
         value: "12",
         options: FREQUENCIES.filter((option) => option.value !== "365"),
       },
-      { name: "firstPaymentDate", label: "First payment date", type: "date", value: "today" },
-      { name: "extraPerPeriod", label: "Extra payment each period", prefix: "$", value: "0", min: "0", step: "0.01" },
-      { name: "oneTimeAmount", label: "One-time extra payment", prefix: "$", value: "0", min: "0", step: "0.01" },
-      { name: "oneTimeDate", label: "One-time payment date", type: "date", value: "" },
+      { name: "firstPaymentDate", label: "First payment date", group: "extra", type: "date", value: "today" },
+      { name: "extraPerPeriod", label: "Extra payment each period", group: "extra", prefix: "$", value: "0", min: "0", step: "0.01" },
+      { name: "oneTimeDate", label: "One-time payment date", group: "extra", type: "date", value: "" },
+      { name: "oneTimeAmount", label: "One-time extra payment", group: "extra", prefix: "$", value: "0", min: "0", step: "0.01" },
     ],
     calculate: loanSummary,
     render: renderLoan,
@@ -265,29 +268,46 @@ const MODES = {
     blurb:
       "Pay cash for a cheaper car and invest the payments you skip, or finance a more expensive car. Both cars lose value at the same rate.",
     fields: [
-      { name: "cheapPrice", label: "Cheaper car", prefix: "$", value: "8000", min: "0", step: "0.01" },
-      { name: "expensivePrice", label: "More expensive car", prefix: "$", value: "28000", min: "0", step: "0.01" },
-      { name: "downPayment", label: "Down payment", prefix: "$", value: "3000", min: "0", step: "0.01" },
-      { name: "loanRate", label: "Loan interest rate", suffix: "%", value: "6.5", step: "0.01" },
-      { name: "loanYears", label: "Years of payments", value: "5", min: "0.1", step: "0.5" },
-      {
-        name: "periodsPerYear",
-        label: "Payments per year",
-        type: "select",
-        value: "12",
-        options: FREQUENCIES.filter((option) => option.value !== "365"),
-      },
-      { name: "depreciation", label: "Yearly depreciation", suffix: "%", value: "15", min: "0", step: "0.1" },
-      { name: "returnRate", label: "Expected annual return", suffix: "%", value: "8", step: "0.01" },
+      { name: "cheapPrice", label: "Price", group: "cheap", prefix: "$", value: "8000", min: "0", step: "0.01" },
+      { name: "returnRate", label: "Expected annual return", group: "cheap", suffix: "%", value: "8", step: "0.01" },
       {
         name: "compoundPerYear",
         label: "Compounding",
+        group: "cheap",
         type: "select",
         value: "12",
         options: FREQUENCIES.filter((option) => option.value !== "2"),
       },
-      { name: "inflation", label: "Inflation", suffix: "%", value: "3", step: "0.01" },
-      { name: "years", label: "Years to compare", value: "10", min: "0.1", step: "0.5" },
+      { name: "expensivePrice", label: "Price", group: "expensive", prefix: "$", value: "28000", min: "0", step: "0.01" },
+      { name: "downPayment", label: "Down payment", group: "expensive", prefix: "$", value: "3000", min: "0", step: "0.01" },
+      { name: "loanRate", label: "Loan interest rate", group: "expensive", suffix: "%", value: "6.5", step: "0.01" },
+      { name: "loanYears", label: "Years of payments", group: "expensive", value: "5", min: "0.1", step: "0.5" },
+      {
+        name: "periodsPerYear",
+        label: "Payments per year",
+        group: "expensive",
+        type: "select",
+        value: "12",
+        options: FREQUENCIES.filter((option) => option.value !== "365"),
+      },
+      {
+        name: "includeCarValue",
+        label: "Include the expensive car's remaining value",
+        group: "cheap",
+        divide: true,
+        type: "checkbox",
+        value: true,
+      },
+      {
+        name: "depreciation",
+        label: "Yearly depreciation",
+        group: "cheap",
+        suffix: "%",
+        value: "15",
+        min: "0",
+        step: "0.1",
+      },
+      { name: "years", label: "Years to compare", group: "cheap", value: "10", min: "0.1", step: "0.5" },
     ],
     calculate: carComparison,
     render: renderCar,
@@ -315,10 +335,10 @@ form.addEventListener("input", (event) => {
   }
   state.values[state.mode] = { ...(state.values[state.mode] || {}), ...readForm() };
   saveState();
-  if (event.target.name === "kind" || event.target.name === "interestType") {
+  if (event.target.name === "kind" || event.target.name === "interestType" || event.target.name === "includeCarValue") {
     const name = event.target.name;
     renderForm(MODES[state.mode]);
-    form.querySelector(`[name="${name}"]:checked`)?.focus();
+    (form.querySelector(`[name="${name}"]:checked`) || form.querySelector(`[name="${name}"]`))?.focus();
   }
   calculate();
 });
@@ -353,6 +373,11 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+const FIELD_GROUPS = {
+  cheap: "Cheaper car",
+  expensive: "More expensive car",
+};
+
 setupHelp();
 selectMode(state.mode, { keepStored: true });
 
@@ -371,6 +396,7 @@ function selectMode(mode, { keepStored = false } = {}) {
   const activeTab = document.querySelector(`#tab-${mode}`);
   panel.setAttribute("aria-labelledby", activeTab.id);
   blurb.textContent = config.blurb;
+  document.querySelector(".app")?.classList.toggle("wide", mode === "cars" || mode === "loans" || mode === "stocks");
   renderForm(config);
   calculate();
 }
@@ -378,51 +404,95 @@ function selectMode(mode, { keepStored = false } = {}) {
 function renderForm(config) {
   const values = state.values[state.mode] || {};
   if (state.mode === "stocks") ensureContributionFrequency(values);
-  const fields = config.fields
-    .filter((field) => !field.when || field.when(values))
-    .map((field) => {
-      const rawValue = values[field.name] ?? (field.value === "today" ? todayISO() : field.value);
-      const value = field.prefix === "$" ? formatGrouped(rawValue) : rawValue;
-      const label = fieldLabel(field, values);
-      const mark = helpButton(fieldHelpKey(field, values));
-      const id = `field-${field.name}`;
-      if (field.type === "checkbox") {
-        const checked = value === true || value === "true" ? "checked" : "";
-        return `<div class="check-row"><label class="check"><input type="checkbox" name="${field.name}" ${checked} /><span>${label}</span></label>${mark}</div>`;
+  const visible = config.fields.filter((field) => !field.when || field.when(values));
+  const actions = `<div class="actions"><button type="submit" class="ghost">Recalculate</button></div>`;
+  if (visible.some((field) => field.row)) {
+    const chunks = [];
+    let index = 0;
+    while (index < visible.length) {
+      if (!visible[index].row) {
+        const loose = [];
+        while (index < visible.length && !visible[index].row) {
+          loose.push(renderField(visible[index], values));
+          index += 1;
+        }
+        chunks.push(`<div class="fields">${loose.join("")}</div>`);
+        continue;
       }
-      if (field.type === "radio") {
-        const radios = field.options
-          .map((option) => {
-            const checked = String(value) === option.value ? "checked" : "";
-            return `<label><input type="radio" name="${field.name}" value="${option.value}" ${checked} /><span>${option.label}</span></label>`;
-          })
-          .join("");
-        return `<fieldset class="choices"><legend>${label}${mark}</legend><div class="choice-row">${radios}</div></fieldset>`;
+      const row = visible[index].row;
+      const cells = [];
+      while (index < visible.length && visible[index].row === row) {
+        cells.push(renderField(visible[index], values));
+        index += 1;
       }
-      if (field.type === "date") {
-        return `<div class="field"><div class="label-line"><label for="${id}">${label}</label>${mark}</div><div class="control"><input id="${id}" name="${field.name}" type="date" value="${escapeAttr(value)}" /></div></div>`;
-      }
-      if (field.type === "select") {
-        const options = field.options
-          .map((option) => {
-            const selected = String(value) === option.value ? "selected" : "";
-            return `<option value="${option.value}" ${selected}>${option.label}</option>`;
-          })
-          .join("");
-        return `<div class="field"><div class="label-line"><label for="${id}">${label}</label>${mark}</div><div class="control"><select id="${id}" name="${field.name}">${options}</select></div></div>`;
-      }
-      const prefix = field.prefix ? `<span class="affix">${field.prefix}</span>` : "";
-      const suffix = field.suffix ? `<span class="affix">${field.suffix}</span>` : "";
-      const min = field.min != null ? `min="${field.min}"` : "";
-      const step = field.step ? `step="${field.step}"` : "step=\"any\"";
-      const grouped = field.prefix === "$";
-      const type = grouped ? "text" : "number";
-      const group = grouped ? `data-group="true"` : "";
-      return `<div class="field"><div class="label-line"><label for="${id}">${label}</label>${mark}</div><div class="control">${prefix}<input id="${id}" name="${field.name}" type="${type}" inputmode="decimal" value="${escapeAttr(value)}" ${min} ${step} ${group} required />${suffix}</div></div>`;
+      chunks.push(`<div class="fields row">${cells.join("")}</div>`);
+    }
+    form.innerHTML = `${chunks.join("")}${actions}`;
+    return;
+  }
+  if (!visible.some((field) => field.group)) {
+    form.innerHTML = `<div class="fields">${visible.map((field) => renderField(field, values)).join("")}</div>${actions}`;
+    return;
+  }
+
+  const groups = [...new Set(visible.map((field) => field.group).filter(Boolean))];
+  const columns = groups
+    .map((group) => {
+      const body = visible
+        .filter((field) => field.group === group)
+        .map((field) => renderField(field, values))
+        .join("");
+      const legend = FIELD_GROUPS[group] ? `<legend>${FIELD_GROUPS[group]}</legend>` : "";
+      return `<fieldset class="column">${legend}${body}</fieldset>`;
     })
     .join("");
+  const sharedFields = visible.filter((field) => !field.group);
+  const shared = sharedFields.length
+    ? `<div class="fields shared">${sharedFields.map((field) => renderField(field, values)).join("")}</div>`
+    : "";
+  form.innerHTML = `<div class="split">${columns}</div>${shared}${actions}`;
+}
 
-  form.innerHTML = `<div class="fields">${fields}</div><div class="actions"><button type="submit" class="ghost">Recalculate</button></div>`;
+function renderField(field, values) {
+  const rawValue = values[field.name] ?? (field.value === "today" ? todayISO() : field.value);
+  const value = field.prefix === "$" ? formatGrouped(rawValue) : rawValue;
+  const label = fieldLabel(field, values);
+  const mark = helpButton(fieldHelpKey(field, values));
+  const id = `field-${field.name}`;
+  if (field.type === "checkbox") {
+    const checked = value === true || value === "true" ? "checked" : "";
+    const section = field.divide ? " section-break" : "";
+    return `<div class="check-row${section}"><label class="check"><input type="checkbox" name="${field.name}" ${checked} /><span>${label}</span></label>${mark}</div>`;
+  }
+  if (field.type === "radio") {
+    const radios = field.options
+      .map((option) => {
+        const checked = String(value) === option.value ? "checked" : "";
+        return `<label><input type="radio" name="${field.name}" value="${option.value}" ${checked} /><span>${option.label}</span></label>`;
+      })
+      .join("");
+    return `<fieldset class="choices"><legend>${label}${mark}</legend><div class="choice-row">${radios}</div></fieldset>`;
+  }
+  if (field.type === "date") {
+    return `<div class="field"><div class="label-line"><label for="${id}">${label}</label>${mark}</div><div class="control"><input id="${id}" name="${field.name}" type="date" value="${escapeAttr(value)}" /></div></div>`;
+  }
+  if (field.type === "select") {
+    const options = field.options
+      .map((option) => {
+        const selected = String(value) === option.value ? "selected" : "";
+        return `<option value="${option.value}" ${selected}>${option.label}</option>`;
+      })
+      .join("");
+    return `<div class="field"><div class="label-line"><label for="${id}">${label}</label>${mark}</div><div class="control"><select id="${id}" name="${field.name}">${options}</select></div></div>`;
+  }
+  const prefix = field.prefix ? `<span class="affix">${field.prefix}</span>` : "";
+  const suffix = field.suffix ? `<span class="affix">${field.suffix}</span>` : "";
+  const min = field.min != null ? `min="${field.min}"` : "";
+  const step = field.step ? `step="${field.step}"` : "step=\"any\"";
+  const grouped = field.prefix === "$";
+  const type = grouped ? "text" : "number";
+  const group = grouped ? `data-group="true"` : "";
+  return `<div class="field"><div class="label-line"><label for="${id}">${label}</label>${mark}</div><div class="control">${prefix}<input id="${id}" name="${field.name}" type="${type}" inputmode="decimal" value="${escapeAttr(value)}" ${min} ${step} ${group} required />${suffix}</div></div>`;
 }
 
 function calculate() {
@@ -434,7 +504,8 @@ function calculate() {
     error.hidden = true;
     error.textContent = "";
     results.innerHTML = config.render(output);
-    if (output.series) bindSeriesChart(output.series, output.series[0]?.cheap == null ? chartReadout : comparisonReadout);
+    if (output.series) bindSeriesChart(output.series, seriesReadout(output.series));
+    if (state.mode === "loans") bindLoanLines();
   } catch (err) {
     results.innerHTML = "";
     error.hidden = false;
@@ -505,11 +576,14 @@ function renderStock(output) {
     output.contributionCount > 0
       ? ` ${output.contributionCount.toLocaleString("en-US")} contributions, ${contributionPace(output.contributionPerYear)}.`
       : "";
-  return [
+  const summary = [
     stat("Future value", money.format(output.futureValue), true),
     stat("In today's dollars", money.format(output.realValue)),
     stat("You put in", money.format(output.contributed)),
     stat("Growth", money.format(output.growth), false, output.growth >= 0),
+  ];
+  return [
+    `<div class="stat-row pairs">${summary.join("")}</div>`,
     growthChart(output.series),
     note(timing + deposits),
   ].join("");
@@ -577,7 +651,7 @@ function growthChart(series) {
   const end = series[series.length - 1];
   const label = `Total value from ${money.format(start.value)} at the start to ${money.format(end.value)} after ${formatYear(end.year)} years, worth ${money.format(end.real)} in today's buying power.`;
 
-  return `<figure class="chart"><figcaption>Growth over time</figcaption><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttr(label)}">${grid}${yearMarks}<path class="chart-area" d="${area}" /><polyline class="chart-contributed" points="${contributed}" /><polyline class="chart-real" points="${real}" /><polyline class="chart-balance" points="${balance}" /><line class="chart-cursor" data-cursor x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" hidden /><rect class="chart-plot" data-plot data-x="${left}" data-w="${plotW}" x="${left}" y="${top}" width="${plotW}" height="${plotH}" /></svg><div class="legend"><span><i class="swatch balance"></i>Total value</span><span><i class="swatch real"></i>Today's buying power</span><span><i class="swatch contributed"></i>Money put in</span></div><p class="chart-readout" data-readout>${chartReadout(end, true)}</p></figure>`;
+  return `<figure class="chart"><figcaption>Growth over time</figcaption><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttr(label)}">${grid}${yearMarks}<path class="chart-area" d="${area}" /><polyline class="chart-contributed" points="${contributed}" /><polyline class="chart-real" points="${real}" /><polyline class="chart-balance" points="${balance}" /><line class="chart-cursor" data-cursor x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" visibility="hidden" /><rect class="chart-plot" data-plot data-x="${left}" data-w="${plotW}" x="${left}" y="${top}" width="${plotW}" height="${plotH}" /></svg><div class="legend"><span><i class="swatch balance"></i>Total value</span><span><i class="swatch real"></i>Today's buying power</span><span><i class="swatch contributed"></i>Money put in</span></div><p class="chart-readout" data-readout>${chartReadout(end, true)}</p></figure>`;
 }
 
 function bindSeriesChart(series, readoutFor) {
@@ -598,16 +672,62 @@ function bindSeriesChart(series, readoutFor) {
     const x = plotX + t * plotW;
     cursor.setAttribute("x1", x);
     cursor.setAttribute("x2", x);
-    cursor.hidden = false;
+    cursor.setAttribute("visibility", "visible");
     readout.textContent = readoutFor(series[index]);
   };
 
   plot.addEventListener("pointermove", (event) => show(event.clientX));
   plot.addEventListener("pointerdown", (event) => show(event.clientX));
   plot.addEventListener("pointerleave", () => {
-    cursor.hidden = true;
+    cursor.setAttribute("visibility", "hidden");
     readout.textContent = readoutFor(series[series.length - 1], true);
   });
+}
+
+function seriesReadout(series) {
+  const first = series[0] || {};
+  if (first.cheap != null) return comparisonReadout;
+  if (first.balance != null) return loanReadout;
+  return chartReadout;
+}
+
+function loanLineState() {
+  const saved = state.values.loans?.chartLines;
+  return {
+    balance: saved?.balance !== false,
+    extra: saved?.extra !== false,
+    interest: saved?.interest !== false,
+  };
+}
+
+function setLoanLine(name, shown) {
+  state.values.loans = {
+    ...(state.values.loans || {}),
+    chartLines: { ...loanLineState(), [name]: shown },
+  };
+  saveState();
+}
+
+function bindLoanLines() {
+  results.querySelectorAll("[data-loan-line]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const name = input.dataset.loanLine;
+      setLoanLine(name, input.checked);
+      calculate();
+      results.querySelector(`[data-loan-line="${name}"]`)?.focus();
+    });
+  });
+}
+
+function loanReadout(point, isEnd = false) {
+  const amount = formatYear(point.year);
+  const when = isEnd ? `After ${amount} ${point.year === 1 ? "year" : "years"}` : `Year ${amount}`;
+  const lines = loanLineState();
+  const parts = [];
+  if (lines.balance) parts.push(`Amount owed ${money.format(point.balance)}`);
+  if (lines.extra && point.extraBalance != null) parts.push(`Payoff with extra payments ${money.format(point.extraBalance)}`);
+  if (lines.interest) parts.push(`Interest paid ${money.format(point.interest)}`);
+  return parts.length ? `${when} · ${parts.join(" · ")}` : `${when} · No lines shown`;
 }
 
 function chartReadout(point, isEnd = false) {
@@ -703,21 +823,25 @@ function formatYears(years) {
 function renderCar(output) {
   const cheapWins = output.ahead >= -0.005;
   const aheadLabel = cheapWins ? "Ahead with the cheap car" : "Ahead with the expensive car";
-  const lines = [
-    stat(aheadLabel, money.format(Math.abs(output.ahead)), true, cheapWins),
-    stat("Cheap car path", money.format(output.cheapNet)),
-    stat("Expensive car path", money.format(output.expensiveNet)),
+  const cheapLabel = "Cheap car net value plus investment";
+  const expensiveLabel = "Expensive car net value";
+  const expensiveKey = output.includeCarValue ? expensiveLabel : "Expensive car path cash";
+  const cheapColumn = [
+    stat(cheapLabel, money.format(output.cheapNet)),
+    stat("Investment account", money.format(output.investment)),
   ];
-  if (Math.abs(output.inflation) > 1e-8) {
-    lines.push(stat("Cheap car today", money.format(output.cheapToday)));
-    lines.push(stat("Expensive car today", money.format(output.expensiveToday)));
-  }
-  if (output.payment > 0) lines.push(stat("Loan payment", money.format(output.payment)));
-  lines.push(stat("Investment account", money.format(output.investment)));
-  if (output.interestPaid > 0.004) lines.push(stat("Interest paid", money.format(output.interestPaid)));
-  if (output.loanBalance > 0.004) lines.push(stat("Still owed", money.format(output.loanBalance)));
-  lines.push(comparisonChart(output.series), note(carNote(output)));
-  return lines.join("");
+  const expensiveColumn = [
+    stat(expensiveLabel, money.format(output.expensiveNet), false, null, expensiveKey),
+  ];
+  if (output.payment > 0) expensiveColumn.push(stat("Loan payment", money.format(output.payment)));
+  if (output.interestPaid > 0.004) expensiveColumn.push(stat("Interest paid", money.format(output.interestPaid)));
+  if (output.loanBalance > 0.004) expensiveColumn.push(stat("Still owed", money.format(output.loanBalance)));
+  return [
+    stat(aheadLabel, money.format(Math.abs(output.ahead)), true, cheapWins),
+    `<div class="split result-paths"><div class="column">${cheapColumn.join("")}</div><div class="column">${expensiveColumn.join("")}</div></div>`,
+    comparisonChart(output.series, output.includeCarValue),
+    note(carNote(output)),
+  ].join("");
 }
 
 function carNote(output) {
@@ -727,10 +851,13 @@ function carNote(output) {
       : output.loanBalance > 0.004
         ? " The loan still has a balance because the comparison ends first."
         : "";
-  return `The cheaper car is paid in cash. Cash left over, compared with the down payment, is invested up front, and each loan payment you don't make is invested at the end of that period. Both cars lose the same share of their price each year. Each line is the car, plus investments, minus any loan still owed.${windowText}`;
+  const cars = output.includeCarValue
+    ? "Both cars lose the same share of their price each year. Each line is the car, plus investments, minus any loan still owed."
+    : "The cheap car's total is its remaining value plus the investment account. The expensive car's remaining value is left out, so that line is invested cash minus the loan still owed.";
+  return `The cheaper car is paid in cash. Cash left over, compared with the down payment, is invested up front, and each loan payment you don't make is invested at the end of that period. ${cars}${windowText}`;
 }
 
-function comparisonChart(series) {
+function comparisonChart(series, includeCarValue) {
   const width = 640;
   const height = 280;
   const left = 58;
@@ -769,8 +896,11 @@ function comparisonChart(series) {
     })
     .join("");
   const end = series[series.length - 1];
-  const label = `After ${formatYear(end.year)} years the cheap car path is ${money.format(end.cheap)} and the expensive car path is ${money.format(end.expensive)}.`;
-  return `<figure class="chart"><figcaption>Net worth over time</figcaption><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttr(label)}">${grid}${yearMarks}<path class="chart-area" d="${area}" /><polyline class="chart-real" points="${expensive}" /><polyline class="chart-balance" points="${cheap}" /><line class="chart-cursor" data-cursor x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" hidden /><rect class="chart-plot" data-plot data-x="${left}" data-w="${plotW}" x="${left}" y="${top}" width="${plotW}" height="${plotH}" /></svg><div class="legend"><span><i class="swatch balance"></i>Cheap car and invest</span><span><i class="swatch real"></i>Expensive car and payments</span></div><p class="chart-readout" data-readout>${comparisonReadout(end, true)}</p></figure>`;
+  const caption = includeCarValue ? "Net worth over time" : "Cheap car and cash over time";
+  const cheapLegend = "Cheap car and investment";
+  const expensiveLegend = includeCarValue ? "Expensive car and payments" : "Cash minus the loan";
+  const label = `After ${formatYear(end.year)} years the cheap car net value plus investment is ${money.format(end.cheap)} and the expensive car net value is ${money.format(end.expensive)}.`;
+  return `<figure class="chart"><figcaption>${caption}</figcaption><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttr(label)}">${grid}${yearMarks}<path class="chart-area" d="${area}" /><polyline class="chart-real" points="${expensive}" /><polyline class="chart-balance" points="${cheap}" /><line class="chart-cursor" data-cursor x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" visibility="hidden" /><rect class="chart-plot" data-plot data-x="${left}" data-w="${plotW}" x="${left}" y="${top}" width="${plotW}" height="${plotH}" /></svg><div class="legend"><span><i class="swatch balance"></i>${cheapLegend}</span><span><i class="swatch real"></i>${expensiveLegend}</span></div><p class="chart-readout" data-readout>${comparisonReadout(end, true)}</p></figure>`;
 }
 
 function comparisonReadout(point, isEnd = false) {
@@ -836,16 +966,98 @@ function isNumericOptions(field) {
 
 function renderLoan(output) {
   const lines = [stat("Payment", money.format(output.roundedPayment), true)];
-  if (output.extraPerPeriod > 0) {
-    lines.push(stat("Payment with extra", money.format(output.roundedPayment + output.extraPerPeriod)));
-  }
-  lines.push(stat("Total paid", money.format(output.totalPaid)));
-  lines.push(stat("Total interest", money.format(output.totalInterest)));
+  const totals = [
+    stat("Total paid", money.format(output.totalPaid)),
+    stat("Total interest", money.format(output.totalInterest)),
+  ];
   if (output.interestSaved > 0.004) {
-    lines.push(stat("Interest saved", money.format(output.interestSaved), false, true));
+    totals.push(stat("Interest saved", money.format(output.interestSaved), false, true));
   }
-  lines.push(note(loanNote(output)), scheduleTable(output.rows));
+  if (output.extraPerPeriod > 0) {
+    totals.unshift(stat("Payment with extra", money.format(output.roundedPayment + output.extraPerPeriod)));
+  }
+  lines.push(`<div class="stat-row">${totals.join("")}</div>`);
+  lines.push(note(loanNote(output)), scheduleTable(output.rows), loanChart(output.series));
   return lines.join("");
+}
+
+function loanChart(series) {
+  const width = 640;
+  const height = 280;
+  const left = 58;
+  const right = 16;
+  const top = 16;
+  const bottom = 36;
+  const plotW = width - left - right;
+  const plotH = height - top - bottom;
+  const lines = loanLineState();
+  const showExtra = series.some((point) => point.extraBalance != null);
+  const amounts = [];
+  if (lines.balance) amounts.push(...series.map((point) => point.balance));
+  if (showExtra && lines.extra) amounts.push(...series.map((point) => point.extraBalance));
+  if (lines.interest) amounts.push(...series.map((point) => point.interest));
+  if (!amounts.length) amounts.push(0, 1);
+  let min = Math.min(0, ...amounts);
+  let max = Math.max(0, ...amounts);
+  if (min === max) max = min + 1;
+  max += (max - min) * 0.08;
+  const span = max - min;
+  const maxYear = series[series.length - 1].year;
+  const yFor = (amount) => top + plotH - ((amount - min) / span) * plotH;
+  const xFor = (year) => left + (maxYear === 0 ? plotW / 2 : (year / maxYear) * plotW);
+  const pointsFor = (pick, rows = series) =>
+    rows.map((point) => `${xFor(point.year).toFixed(1)},${yFor(pick(point)).toFixed(1)}`).join(" ");
+  const extraRows = [];
+  if (showExtra) {
+    for (const point of series) {
+      extraRows.push(point);
+      if (point.year > 0 && point.extraBalance <= 0.004) break;
+    }
+  }
+  const zeroY = yFor(0);
+  const area = lines.balance
+    ? `M ${xFor(0).toFixed(1)} ${zeroY.toFixed(1)} ${series
+        .map((point) => `L ${xFor(point.year).toFixed(1)} ${yFor(point.balance).toFixed(1)}`)
+        .join(" ")} L ${xFor(maxYear).toFixed(1)} ${zeroY.toFixed(1)} Z`
+    : "";
+  const grid = [0, 0.5, 1]
+    .map((step) => {
+      const amount = min + span * step;
+      const y = yFor(amount);
+      return `<line class="chart-grid" x1="${left}" y1="${y.toFixed(1)}" x2="${left + plotW}" y2="${y.toFixed(1)}" /><text class="chart-label" x="${left - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end">${compactMoney(amount)}</text>`;
+    })
+    .join("");
+  const yearMarks = [0, 0.5, 1]
+    .map((step, mark) => {
+      const index = Math.round(step * (series.length - 1));
+      const point = series[index];
+      const anchor = ["start", "middle", "end"][mark];
+      return `<text class="chart-label" x="${xFor(point.year).toFixed(1)}" y="${height - 10}" text-anchor="${anchor}">Yr ${formatYear(point.year)}</text>`;
+    })
+    .join("");
+  const end = series[series.length - 1];
+  const shown = [
+    lines.balance ? `Amount owed ends at ${money.format(end.balance)}` : "",
+    showExtra && lines.extra ? `Payoff with extra payments ends at ${money.format(extraRows[extraRows.length - 1].extraBalance)}` : "",
+    lines.interest ? `Interest paid ends at ${money.format(end.interest)}` : "",
+  ].filter(Boolean);
+  const label = shown.length
+    ? `After ${formatYear(end.year)} years, ${shown.join(". ")}.`
+    : "No lines are shown.";
+  const balanceLine = lines.balance ? `<polyline class="chart-balance" points="${pointsFor((point) => point.balance)}" />` : "";
+  const interestLine = lines.interest ? `<polyline class="chart-contributed" points="${pointsFor((point) => point.interest)}" />` : "";
+  const extraLine = showExtra && lines.extra ? `<polyline class="chart-real" points="${pointsFor((point) => point.extraBalance, extraRows)}" />` : "";
+  const areaPath = area ? `<path class="chart-area" d="${area}" />` : "";
+  const toggles = [
+    lineToggle("balance", "Amount owed", "balance", lines.balance),
+    showExtra ? lineToggle("extra", "Payoff with extra payments", "real", lines.extra) : "",
+    lineToggle("interest", "Interest paid", "contributed", lines.interest),
+  ].join("");
+  return `<figure class="chart"><figcaption>Loan over time</figcaption><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttr(label)}">${grid}${yearMarks}${areaPath}${interestLine}${balanceLine}${extraLine}<line class="chart-cursor" data-cursor x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" visibility="hidden" /><rect class="chart-plot" data-plot data-x="${left}" data-w="${plotW}" x="${left}" y="${top}" width="${plotW}" height="${plotH}" /></svg><div class="legend">${toggles}</div><p class="chart-readout" data-readout>${loanReadout(end, true)}</p></figure>`;
+}
+
+function lineToggle(name, label, swatch, checked) {
+  return `<label class="check"><input type="checkbox" data-loan-line="${name}" ${checked ? "checked" : ""} /><i class="swatch ${swatch}"></i><span>${label}</span></label>`;
 }
 
 function loanNote(output) {
