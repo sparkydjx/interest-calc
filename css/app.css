@@ -91,7 +91,7 @@ h1 {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.35rem;
   margin: 0.9rem 0 0.35rem;
   padding: 0.3rem;
@@ -404,6 +404,19 @@ main {
   display: grid;
   gap: 0.65rem;
   margin-top: 1rem;
+}
+
+.payouts {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.payouts h2 {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 650;
 }
 
 .results:empty {

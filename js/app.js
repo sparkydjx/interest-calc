@@ -1,4 +1,4 @@
-import { annuityValues, bondPrice, carComparison, loanSummary, stockGrowth } from "./calc.js";
+import { annuityValues, bondPrice, carComparison, creditCardSummary, loanSummary, stockGrowth } from "./calc.js";
 
 const STORAGE_KEY = "interest-calc-v1";
 
@@ -42,20 +42,22 @@ const HELP = {
     "Current yield": "One year of coupon payments divided by today's price.",
   },
   annuities: {
-    kind: "Immediate turns a lump sum into income that starts now. Deferred lets the money grow first, then pays income.",
+    kind: "Immediate turns a lump sum into income that starts now. Deferred adds a monthly contribution while it grows, then pays out like an immediate annuity.",
     initialInvestment: "The lump sum paid today to buy the income.",
-    payment: "The amount paid to you each period after the waiting time ends.",
+    contribution: "The amount added at the end of each month until withdrawals start. It then earns interest.",
     annualRate: "The yearly rate the money earns while it is invested.",
     years: "How many years the income payments last.",
-    deferralYears: "How many years the money grows before the first payment.",
+    deferralYears: "How many years you add the monthly contribution. Withdrawals start when these contributions end.",
     periodsPerYear: "How many payments are made each year.",
-    due: "Turn this on when each payment is made at the start of the period. For an immediate annuity, the first payment is today.",
+    due: "Turn this on when each withdrawal is paid at the start of the period. For an immediate annuity, the first payment is today. Monthly contributions are still added at the end of each month.",
     Payment: "The steady income each period that uses up the initial investment.",
     "Total income": "All of the payments added together.",
     "Interest earned": "Total income minus the initial investment.",
-    "Interest earned deferred": "Total income minus what the payments would cost today.",
-    "Cost today": "The lump sum you would need to invest today to fund these later payments.",
-    "Value when payments begin": "What that lump sum has grown to on the day payments start.",
+    "Interest earned deferred": "Total income minus every monthly contribution.",
+    "You contributed": "Every monthly contribution added together. Interest earned during the saving years is not included.",
+    "Value when payments begin": "The contributions plus interest on the day withdrawals start. From here the payout is calculated like an immediate annuity.",
+    payoutFrequency: "How often you receive a payout once withdrawals start: every month, every quarter, or once a year.",
+    "Each payout": "The level payment this balance can support at the frequency you select. Each payment is part earnings and part a drawdown of the balance.",
     "column:Period": "The payment number, counting from the first payment.",
     "column:Payment": "The income paid in that period.",
     "column:Interest": "The part of the payment that came from earnings.",
@@ -82,6 +84,30 @@ const HELP = {
     "column:Extra": "The extra amount included in that payment, beyond the regular payment.",
     "column:Interest": "The part of the payment that is interest.",
     "column:Principal": "The part of the payment that reduces what you owe.",
+    "column:Balance": "What is still owed after this payment.",
+  },
+  creditcards: {
+    balance: "What you owe on the card today.",
+    annualRate: "The card's yearly interest rate. Enter 19.99 for 19.99%. Interest is charged once a month on the unpaid balance.",
+    minimumMethod: "1% of the balance plus that month's interest is the formula most large issuers use. 2% of the balance, including interest, is the other common formula. Fees are left out.",
+    floor: "The smallest payment the issuer accepts, often $25 or $35. If you owe less than this, the payment is the full amount owed.",
+    firstPaymentDate: "The date the first payment is due. Later payments are one month apart.",
+    extraPerPeriod: "An amount added to every monthly payment. It reduces the balance and can pay the card off sooner.",
+    oneTimeAmount: "A single extra amount paid once, in addition to that month's payment.",
+    oneTimeDate: "The date of that one-time payment. It is included with the first monthly payment on or after this date.",
+    "Paid off": "The date of the last payment.",
+    "Still owed": "The balance left after the payments shown.",
+    Payments: "How many monthly payments are shown.",
+    "Total paid": "Every payment added together, including interest and extra payments.",
+    "Total interest": "The interest charged across the payments. Extra payments lower this by paying the balance down sooner.",
+    "Interest saved": "How much less interest you pay than by making only the calculated minimum.",
+    "First minimum": "The minimum due on the first payment. Later minimums shrink as the balance shrinks.",
+    "column:Period": "The payment number, counting from the first payment.",
+    "column:Date": "The date that payment is due.",
+    "column:Payment": "The amount paid that month, including any extra.",
+    "column:Extra": "The extra amount included in that payment, beyond the monthly payment.",
+    "column:Interest": "The interest charged on the balance that month.",
+    "column:Principal": "The part of the payment that reduces the balance.",
     "column:Balance": "What is still owed after this payment.",
   },
   cars: {
@@ -188,7 +214,7 @@ const MODES = {
   annuities: {
     label: "Annuities",
     blurb:
-      "Immediate annuities turn a lump sum into income that starts now. Deferred annuities wait, then pay a level income.",
+      "Immediate annuities turn a lump sum into income that starts now. Deferred annuities add a monthly contribution until withdrawals start, then pay out the same way.",
     fields: [
       {
         name: "kind",
@@ -210,10 +236,10 @@ const MODES = {
         when: (values) => annuityKind(values) === "immediate",
       },
       {
-        name: "payment",
-        label: "Payment",
+        name: "contribution",
+        label: "Monthly contribution",
         prefix: "$",
-        value: "1000",
+        value: "500",
         min: "0",
         step: "0.01",
         when: (values) => annuityKind(values) === "deferred",
@@ -222,7 +248,7 @@ const MODES = {
       { name: "years", label: "Years of payments", value: "20", min: "0.1", step: "0.5" },
       {
         name: "deferralYears",
-        label: "Years before payments begin",
+        label: "Years of contributions",
         value: "10",
         min: "0.1",
         step: "0.5",
@@ -234,6 +260,7 @@ const MODES = {
         type: "select",
         value: "12",
         options: FREQUENCIES.filter((option) => option.value !== "365"),
+        when: (values) => annuityKind(values) !== "deferred",
       },
       { name: "due", label: "Payments at the beginning of each period", type: "checkbox", value: false },
     ],
@@ -262,6 +289,32 @@ const MODES = {
     ],
     calculate: loanSummary,
     render: renderLoan,
+  },
+  creditcards: {
+    label: "Credit card",
+    blurb: "Pay down a card with a minimum payment. Choose 1% of the balance plus interest, or 2% of the balance. Add an extra amount every month, or a one-time extra payment on a chosen date.",
+    fields: [
+      { name: "balance", label: "Balance", group: "card", prefix: "$", value: "5000", min: "0", step: "0.01" },
+      { name: "annualRate", label: "Annual interest rate", group: "card", suffix: "%", value: "19.99", step: "0.01" },
+      {
+        name: "minimumMethod",
+        label: "Minimum payment",
+        group: "card",
+        type: "select",
+        value: "percent",
+        options: [
+          { value: "percent", label: "1% of balance plus interest" },
+          { value: "flat", label: "2% of balance" },
+        ],
+      },
+      { name: "floor", label: "Payment floor", group: "card", prefix: "$", value: "25", min: "0", step: "0.01" },
+      { name: "firstPaymentDate", label: "First payment date", group: "cardpay", type: "date", value: "today" },
+      { name: "extraPerPeriod", label: "Extra payment each month", group: "cardpay", prefix: "$", value: "0", min: "0", step: "0.01" },
+      { name: "oneTimeDate", label: "One-time payment date", group: "cardpay", type: "date", value: "" },
+      { name: "oneTimeAmount", label: "One-time extra payment", group: "cardpay", prefix: "$", value: "0", min: "0", step: "0.01" },
+    ],
+    calculate: creditCardSummary,
+    render: renderCreditCard,
   },
   cars: {
     label: "Cars",
@@ -348,6 +401,14 @@ form.addEventListener("submit", (event) => {
   calculate();
 });
 
+results.addEventListener("change", (event) => {
+  if (!(event.target instanceof HTMLSelectElement) || event.target.name !== "payoutFrequency") return;
+  state.values.annuities = { ...(state.values.annuities || {}), payoutFrequency: event.target.value };
+  saveState();
+  calculate();
+  results.querySelector("[name='payoutFrequency']")?.focus();
+});
+
 let installPrompt = null;
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
@@ -376,6 +437,8 @@ if ("serviceWorker" in navigator) {
 const FIELD_GROUPS = {
   cheap: "Cheaper car",
   expensive: "More expensive car",
+  card: "Card",
+  cardpay: "Extra payments",
 };
 
 setupHelp();
@@ -396,7 +459,7 @@ function selectMode(mode, { keepStored = false } = {}) {
   const activeTab = document.querySelector(`#tab-${mode}`);
   panel.setAttribute("aria-labelledby", activeTab.id);
   blurb.textContent = config.blurb;
-  document.querySelector(".app")?.classList.toggle("wide", mode === "cars" || mode === "loans" || mode === "stocks");
+  document.querySelector(".app")?.classList.toggle("wide", mode === "cars" || mode === "loans" || mode === "creditcards" || mode === "stocks");
   renderForm(config);
   calculate();
 }
@@ -500,12 +563,16 @@ function calculate() {
   const raw = readForm();
   try {
     const input = normalize(config, raw);
+    if (state.mode === "annuities") {
+      const frequency = state.values.annuities?.payoutFrequency;
+      input.payoutFrequency = frequency === "4" || frequency === "1" || frequency === "12" ? frequency : "12";
+    }
     const output = config.calculate(input);
     error.hidden = true;
     error.textContent = "";
     results.innerHTML = config.render(output);
     if (output.series) bindSeriesChart(output.series, seriesReadout(output.series));
-    if (state.mode === "loans") bindLoanLines();
+    if (state.mode === "loans" || state.mode === "creditcards") bindLoanLines();
   } catch (err) {
     results.innerHTML = "";
     error.hidden = false;
@@ -692,7 +759,7 @@ function seriesReadout(series) {
 }
 
 function loanLineState() {
-  const saved = state.values.loans?.chartLines;
+  const saved = state.values[state.mode]?.chartLines;
   return {
     balance: saved?.balance !== false,
     extra: saved?.extra !== false,
@@ -701,8 +768,8 @@ function loanLineState() {
 }
 
 function setLoanLine(name, shown) {
-  state.values.loans = {
-    ...(state.values.loans || {}),
+  state.values[state.mode] = {
+    ...(state.values[state.mode] || {}),
     chartLines: { ...loanLineState(), [name]: shown },
   };
   saveState();
@@ -929,14 +996,20 @@ function renderAnnuity(output) {
     const timing = output.due
       ? "The first payment is paid when the waiting period ends."
       : "The first payment is one period after the waiting period ends.";
+    const balanceNote =
+      output.endingBalance > 0.004
+        ? ` About ${money.format(output.endingBalance)} would remain after the payouts.`
+        : " Totals use the payout rounded to the cent.";
     return [
-      stat("Cost today", money.format(output.presentValue), true),
+      renderPayouts(output),
       stat("Value when payments begin", money.format(output.valueAtStart)),
+      stat("You contributed", money.format(output.contributed)),
       stat("Total income", money.format(output.totalPaid)),
       stat("Interest earned", money.format(output.interest), false, output.interest >= 0, "Interest earned deferred"),
       note(
-        `${output.deferralPeriods.toLocaleString("en-US")} waiting periods, then ${output.periods.toLocaleString("en-US")} payments. ${timing}`
+        `${money.format(output.contribution)} is added at the end of each month for ${formatYears(output.deferralYears)}. Withdrawals then follow an immediate annuity. ${timing}${balanceNote}`
       ),
+      scheduleTable(output.rows),
     ].join("");
   }
 
@@ -954,6 +1027,18 @@ function renderAnnuity(output) {
     note(balanceNote),
     scheduleTable(output.rows),
   ].join("");
+}
+
+function renderPayouts(output) {
+  const saved = state.values.annuities?.payoutFrequency;
+  const selected = output.payouts.some((choice) => choice.value === saved) ? saved : "12";
+  const choice = output.payouts.find((item) => item.value === selected) || output.payouts[0];
+  const options = output.payouts
+    .map((item) => `<option value="${item.value}" ${item.value === choice.value ? "selected" : ""}>${item.label}</option>`)
+    .join("");
+  const amount = choice.amount == null ? "—" : money.format(choice.amount);
+  const explanation = choice.amount == null ? note("The years of payments are shorter than one payout at that frequency.") : "";
+  return `<section class="payouts"><h2>Payouts</h2><div class="field"><div class="label-line"><label for="payout-frequency">Payout frequency</label>${helpButton("payoutFrequency")}</div><div class="control"><select id="payout-frequency" name="payoutFrequency">${options}</select></div></div>${stat("Each payout", amount, true)}${explanation}</section>`;
 }
 
 function annuityKind(values) {
@@ -981,7 +1066,54 @@ function renderLoan(output) {
   return lines.join("");
 }
 
-function loanChart(series) {
+function renderCreditCard(output) {
+  const headline =
+    output.rows.length === 0
+      ? stat("Paid off", "Already paid", true)
+      : output.endingBalance > 0.004
+        ? stat("Still owed", money.format(output.endingBalance), true)
+        : stat("Paid off", output.payoffDate ? formatDisplayDate(output.payoffDate) : "Now", true);
+  const totals = [
+    stat("First minimum", money.format(output.firstMinimum)),
+    stat("Payments", output.rows.length.toLocaleString("en-US")),
+    stat("Total paid", money.format(output.totalPaid)),
+    stat("Total interest", money.format(output.totalInterest)),
+  ];
+  if (output.interestSaved > 0.004) totals.push(stat("Interest saved", money.format(output.interestSaved), false, true));
+  return [
+    headline,
+    `<div class="stat-row">${totals.join("")}</div>`,
+    note(creditCardNote(output)),
+    scheduleTable(output.rows),
+    output.rows.length ? loanChart(output.series, "Balance over time") : "",
+  ].join("");
+}
+
+function creditCardNote(output) {
+  if (!output.rows.length) return "The balance is already paid off.";
+  const formula = output.minimumMethod === "flat" ? "2% of the balance, including interest" : "1% of the balance plus interest";
+  if (output.grows) {
+    return `A minimum of ${formula} does not cover the monthly interest, so the balance grows. After ${output.rows.length.toLocaleString("en-US")} payments, about ${money.format(output.endingBalance)} would still be owed.`;
+  }
+  if (output.endingBalance > 0.004) {
+    return `About ${money.format(output.endingBalance)} would still be owed after ${output.rows.length.toLocaleString("en-US")} payments. Each payment is ${formula}, and at least ${money.format(output.floor)}.`;
+  }
+  const payoff = output.payoffDate ? ` on ${formatDisplayDate(output.payoffDate)}` : "";
+  const sooner = output.baselinePaidOff && output.paymentsSaved > 0
+    ? ` That is ${output.paymentsSaved.toLocaleString("en-US")} payments sooner than paying only the minimum.`
+    : !output.baselinePaidOff && (output.extraPerPeriod > 0 || output.oneTimeAmount > 0)
+      ? " The minimum alone does not pay the balance off within 50 years. The extra payments do."
+      : "";
+  let extra = "";
+  if (output.oneTimeAmount > 0 && output.oneTimeApplied) {
+    extra = ` The one-time extra payment is included on ${formatDisplayDate(output.oneTimeAppliedDate)}.`;
+  } else if (output.oneTimeAmount > 0) {
+    extra = " The balance is paid off before the one-time extra payment, so that payment is not included.";
+  }
+  return `${output.rows.length.toLocaleString("en-US")} payments pay the balance off${payoff}.${sooner}${extra} Each payment is ${formula}, and at least ${money.format(output.floor)}, until the balance is smaller than that. Totals use each payment rounded to the cent.`;
+}
+
+function loanChart(series, caption = "Loan over time") {
   const width = 640;
   const height = 280;
   const left = 58;
@@ -1053,7 +1185,7 @@ function loanChart(series) {
     showExtra ? lineToggle("extra", "Payoff with extra payments", "real", lines.extra) : "",
     lineToggle("interest", "Interest paid", "contributed", lines.interest),
   ].join("");
-  return `<figure class="chart"><figcaption>Loan over time</figcaption><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttr(label)}">${grid}${yearMarks}${areaPath}${interestLine}${balanceLine}${extraLine}<line class="chart-cursor" data-cursor x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" visibility="hidden" /><rect class="chart-plot" data-plot data-x="${left}" data-w="${plotW}" x="${left}" y="${top}" width="${plotW}" height="${plotH}" /></svg><div class="legend">${toggles}</div><p class="chart-readout" data-readout>${loanReadout(end, true)}</p></figure>`;
+  return `<figure class="chart"><figcaption>${caption}</figcaption><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttr(label)}">${grid}${yearMarks}${areaPath}${interestLine}${balanceLine}${extraLine}<line class="chart-cursor" data-cursor x1="${left}" y1="${top}" x2="${left}" y2="${top + plotH}" visibility="hidden" /><rect class="chart-plot" data-plot data-x="${left}" data-w="${plotW}" x="${left}" y="${top}" width="${plotW}" height="${plotH}" /></svg><div class="legend">${toggles}</div><p class="chart-readout" data-readout>${loanReadout(end, true)}</p></figure>`;
 }
 
 function lineToggle(name, label, swatch, checked) {

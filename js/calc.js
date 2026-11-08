@@ -204,23 +204,65 @@ function immediateAnnuity({ initialInvestment, annualRate, years, periodsPerYear
   };
 }
 
-function deferredAnnuity({ payment, annualRate, years, periodsPerYear, deferralYears, due }) {
-  const periods = countPeriods(years, periodsPerYear, "payout");
-  const deferralPeriods = countPeriods(deferralYears, periodsPerYear, "deferral");
-  const rate = periodicRate(annualRate, periodsPerYear);
-  const valueAtStart = presentValueOfPayments(payment, rate, periods, due);
-  const presentValue = compound(valueAtStart, rate, -deferralPeriods);
-  const totalPaid = payment * periods;
-
+function deferredAnnuity({ contribution, annualRate, years, deferralYears, due, payoutFrequency }) {
+  if (!Number.isFinite(contribution) || contribution < 0) {
+    throw new Error("Enter a monthly contribution of zero or more.");
+  }
+  const selected = ["12", "4", "1"].includes(String(payoutFrequency)) ? String(payoutFrequency) : "12";
+  const payouts = PAYOUT_CHOICES.map((choice) => {
+    try {
+      const scenario = withdrawalAnnuity(contribution, annualRate, years, deferralYears, due, Number(choice.value));
+      return { ...choice, amount: scenario.payment, scenario };
+    } catch (error) {
+      return { ...choice, amount: null, error: error.message, scenario: null };
+    }
+  });
+  const current = payouts.find((choice) => choice.value === selected) || payouts[0];
+  if (!current.scenario) throw new Error(current.error);
+  const scenario = current.scenario;
   return {
     kind: "deferred",
     due: Boolean(due),
+    periodsPerYear: Number(current.value),
+    payment: scenario.payment,
+    contribution,
+    contributed: scenario.contributed,
+    deferralYears,
+    deferralPeriods: scenario.deferralPeriods,
+    periods: scenario.periods,
+    valueAtStart: scenario.valueAtStart,
+    totalPaid: scenario.totalPaid,
+    interest: scenario.totalPaid - scenario.contributed,
+    endingBalance: scenario.endingBalance,
+    rows: scenario.rows,
+    payouts: payouts.map(({ value, label, amount }) => ({ value, label, amount })),
+  };
+}
+
+const PAYOUT_CHOICES = [
+  { value: "12", label: "Monthly" },
+  { value: "4", label: "Quarterly" },
+  { value: "1", label: "Annually" },
+];
+
+function withdrawalAnnuity(contribution, annualRate, years, deferralYears, due, periodsPerYear) {
+  const periods = countPeriods(years, periodsPerYear, "payout");
+  const deferralPeriods = countPeriods(deferralYears, 12, "deferral");
+  const growthRate = periodicRate(annualRate, 12);
+  const contributed = contribution * deferralPeriods;
+  const valueAtStart = futureValueOfPayments(contribution, growthRate, deferralPeriods, false);
+  const rate = periodicRate(annualRate, periodsPerYear);
+  const rawPayment = annuityPayment(valueAtStart, rate, periods, due);
+  const schedule = buildSchedule(valueAtStart, rate, periods, rawPayment, due);
+  return {
     periods,
     deferralPeriods,
-    presentValue,
+    contributed,
     valueAtStart,
-    totalPaid,
-    interest: totalPaid - presentValue,
+    payment: schedule.roundedPayment,
+    totalPaid: schedule.totalPaid,
+    endingBalance: schedule.endingBalance,
+    rows: schedule.rows,
   };
 }
 
@@ -275,6 +317,107 @@ export function loanSummary({
       extraPerPeriod > 0 || oneTimeAmount > 0
     ),
   };
+}
+
+const CARD_MONTHS = 600;
+
+export function creditCardSummary({
+  balance,
+  annualRate,
+  minimumMethod = "percent",
+  floor = 25,
+  extraPerPeriod = 0,
+  oneTimeAmount = 0,
+  oneTimeDate = "",
+  firstPaymentDate = "",
+}) {
+  if (!Number.isFinite(balance) || balance < 0) throw new Error("Enter a balance of zero or more.");
+  if (!Number.isFinite(floor) || floor < 0) throw new Error("Enter a payment floor of zero or more.");
+  if (!Number.isFinite(extraPerPeriod) || extraPerPeriod < 0) throw new Error("Enter an extra payment of zero or more.");
+  if (!Number.isFinite(oneTimeAmount) || oneTimeAmount < 0) throw new Error("Enter a one-time extra payment of zero or more.");
+  const method = minimumMethod === "flat" ? "flat" : "percent";
+  periodicRate(annualRate, 12);
+
+  const oneTimePeriod = oneTimeAmount > 0 ? periodOnOrAfter(firstPaymentDate, oneTimeDate, 12, CARD_MONTHS) : null;
+  const baseline = cardSchedule(balance, annualRate, method, floor, 0, 0, null);
+  const schedule = cardSchedule(balance, annualRate, method, floor, extraPerPeriod, oneTimeAmount, oneTimePeriod);
+  const first = parseISODate(firstPaymentDate);
+  const rows = schedule.rows.map((row) => ({
+    ...row,
+    date: first ? toISODate(addPeriods(first, row.period - 1, 12)) : "",
+  }));
+  const baselinePaidOff = baseline.endingBalance <= 0.004;
+  const paidOff = schedule.endingBalance <= 0.004;
+  const grows = !paidOff && schedule.endingBalance > balance + 0.004;
+  const shown = grows ? rows.slice(0, 12) : rows;
+  const oneTimeRow = shown.find((row) => row.oneTime > 0);
+  const hasExtra = extraPerPeriod > 0 || oneTimeAmount > 0;
+  const totalPaid = grows ? shown.reduce((sum, row) => sum + row.payment, 0) : schedule.totalPaid;
+  const totalInterest = grows ? shown.reduce((sum, row) => sum + row.interest, 0) : schedule.totalInterest;
+
+  return {
+    balance,
+    minimumMethod: method,
+    floor,
+    firstMinimum: schedule.rows[0]?.minimum ?? 0,
+    extraPerPeriod,
+    oneTimeAmount,
+    rows: shown,
+    payoffDate: paidOff ? rows.at(-1)?.date || "" : "",
+    totalPaid,
+    totalInterest,
+    endingBalance: shown.at(-1)?.balance ?? balance,
+    baselinePaidOff,
+    grows,
+    paymentsSaved: baselinePaidOff && paidOff ? baseline.rows.length - rows.length : 0,
+    interestSaved: baselinePaidOff && paidOff ? baseline.totalInterest - schedule.totalInterest : 0,
+    oneTimeApplied: Boolean(oneTimeRow),
+    oneTimeAppliedDate: oneTimeRow?.date || "",
+    series: loanBalanceSeries(balance, 12, baseline.rows.slice(0, Math.max(shown.length, 1)), shown, hasExtra),
+  };
+}
+
+function cardSchedule(balance, annualRate, method, floor, extraPerPeriod, oneTimeAmount, oneTimePeriod) {
+  const rate = annualRate / 12;
+  let balanceCents = Math.round(balance * 100);
+  const floorCents = Math.round(floor * 100);
+  const extraCents = Math.round(extraPerPeriod * 100);
+  const oneTimeCents = Math.round(oneTimeAmount * 100);
+  const rows = [];
+  let totalPaid = 0;
+  let totalInterest = 0;
+
+  for (let period = 1; period <= CARD_MONTHS && balanceCents > 0; period += 1) {
+    const interestCents = Math.round(balanceCents * rate);
+    const minimumCents = minimumDue(balanceCents, interestCents, method, floorCents);
+    const oneTime = oneTimeCents > 0 && period === oneTimePeriod ? oneTimeCents : 0;
+    const owed = balanceCents + interestCents;
+    const payCents = Math.min(owed, minimumCents + extraCents + oneTime);
+    const principalCents = payCents - interestCents;
+    balanceCents = Math.max(0, balanceCents - principalCents);
+    const extraPaid = Math.max(0, payCents - minimumCents);
+    totalPaid += payCents;
+    totalInterest += interestCents;
+    rows.push({
+      period,
+      payment: payCents / 100,
+      extra: extraPaid / 100,
+      oneTime: Math.min(oneTime, extraPaid) / 100,
+      interest: interestCents / 100,
+      principal: principalCents / 100,
+      balance: balanceCents / 100,
+      minimum: minimumCents / 100,
+    });
+  }
+
+  return { rows, totalPaid: totalPaid / 100, totalInterest: totalInterest / 100, endingBalance: balanceCents / 100 };
+}
+
+function minimumDue(balanceCents, interestCents, method, floorCents) {
+  const owed = balanceCents + interestCents;
+  if (owed <= 0) return 0;
+  const raw = method === "flat" ? Math.round(owed * 0.02) : Math.round(balanceCents * 0.01) + interestCents;
+  return Math.min(owed, Math.max(raw, floorCents));
 }
 
 function loanBalanceSeries(principal, periodsPerYear, baselineRows, actualRows, showExtra) {

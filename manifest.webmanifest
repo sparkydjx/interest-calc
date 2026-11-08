@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Interest Calculator",
   "short_name": "Interest",
-  "description": "Calculate interest for stocks, bonds, annuities, loans, and a cheap car versus a financed car. Works offline.",
+  "description": "Calculate interest for stocks, bonds, annuities, loans, credit cards, and a cheap car versus a financed car. Works offline.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
