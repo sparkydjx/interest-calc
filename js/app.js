@@ -20,7 +20,6 @@ const HELP = {
     annualRate: "How much you expect the investment to grow each year. Enter 8 for 8% a year.",
     inflation: "How much prices rise each year. Enter 3 for 3%. The chart uses this to show the balance in today's buying power.",
     years: "How long the money stays invested.",
-    interestType: "Compound adds each period's growth to the balance, so later growth is larger. Simple pays interest only on the money you put in.",
     periodsPerYear: "How often growth is added to the balance. Once it is added, it can grow too.",
     contributionFrequency: "How often you add that contribution: every week, every two weeks, monthly, quarterly, or once a year.",
     contribution: "Money added at the end of each contribution period. It grows only for the time after you add it.",
@@ -155,18 +154,8 @@ const CONTRIBUTION_FREQUENCIES = [
 const MODES = {
   stocks: {
     label: "Stocks",
-    blurb: "Growth on a starting balance, plus contributions every week, every 2 weeks, month, quarter, or year. Choose compound or simple interest.",
+    blurb: "Growth on a starting balance, plus contributions every week, every 2 weeks, month, quarter, or year.",
     fields: [
-      {
-        name: "interestType",
-        label: "Interest",
-        type: "radio",
-        value: "compound",
-        options: [
-          { value: "compound", label: "Compound" },
-          { value: "simple", label: "Simple" },
-        ],
-      },
       { name: "principal", label: "Starting value", row: "growth", prefix: "$", value: "10000", min: "0", step: "0.01" },
       {
         name: "periodsPerYear",
@@ -175,7 +164,6 @@ const MODES = {
         type: "select",
         value: "12",
         options: FREQUENCIES.filter((option) => option.value !== "2"),
-        when: (values) => values.interestType !== "simple",
       },
       { name: "contribution", label: "Contribution each period", row: "growth", prefix: "$", value: "200", min: "0", step: "0.01" },
       { name: "annualRate", label: "Expected annual return", row: "contributions", suffix: "%", value: "8", step: "0.01" },
@@ -190,7 +178,7 @@ const MODES = {
       },
       { name: "inflation", label: "Inflation", row: "prices", suffix: "%", value: "3", step: "0.01" },
     ],
-    calculate: (input) => stockGrowth({ ...input, contributionPerYear: input.contributionFrequency }),
+    calculate: (input) => stockGrowth({ ...input, contributionPerYear: input.contributionFrequency, interestType: "compound" }),
     render: renderStock,
   },
   bonds: {
@@ -389,7 +377,7 @@ form.addEventListener("input", (event) => {
   }
   state.values[state.mode] = { ...(state.values[state.mode] || {}), ...readForm() };
   saveState();
-  if (event.target.name === "kind" || event.target.name === "interestType" || event.target.name === "includeCarValue") {
+  if (event.target.name === "kind" || event.target.name === "includeCarValue") {
     const name = event.target.name;
     renderForm(MODES[state.mode]);
     (form.querySelector(`[name="${name}"]:checked`) || form.querySelector(`[name="${name}"]`))?.focus();
@@ -637,10 +625,7 @@ function readForm() {
 }
 
 function renderStock(output) {
-  const timing =
-    output.interestType === "simple"
-      ? `Simple interest for ${formatYears(output.yearsHeld)}.`
-      : `${output.periods.toLocaleString("en-US")} compounding periods.`;
+  const timing = `${output.periods.toLocaleString("en-US")} compounding periods.`;
   const deposits =
     output.contributionCount > 0
       ? ` ${output.contributionCount.toLocaleString("en-US")} contributions, ${contributionPace(output.contributionPerYear)}.`
