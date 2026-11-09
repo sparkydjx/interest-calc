@@ -1,6 +1,7 @@
 import { annuityValues, bondPrice, carComparison, creditCardSummary, loanSummary, stockGrowth } from "./calc.js";
 
 const STORAGE_KEY = "interest-calc-v1";
+let closeHelpTip = () => {};
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -441,7 +442,6 @@ const FIELD_GROUPS = {
   cardpay: "Extra payments",
 };
 
-setupHelp();
 selectMode(state.mode, { keepStored: true });
 
 function selectMode(mode, { keepStored = false } = {}) {
@@ -465,6 +465,7 @@ function selectMode(mode, { keepStored = false } = {}) {
 }
 
 function renderForm(config) {
+  closeHelpTip();
   const values = state.values[state.mode] || {};
   if (state.mode === "stocks") ensureContributionFrequency(values);
   const visible = config.fields.filter((field) => !field.when || field.when(values));
@@ -559,6 +560,7 @@ function renderField(field, values) {
 }
 
 function calculate() {
+  closeHelpTip();
   const config = MODES[state.mode];
   const raw = readForm();
   try {
@@ -1244,7 +1246,7 @@ function stat(label, value, primary = false, positive = null, helpKey = label) {
 function helpButton(key) {
   const text = HELP[state.mode]?.[key];
   if (!text) return "";
-  return `<button type="button" class="help" data-help="${escapeAttr(text)}" aria-label="${escapeAttr(text)}"><sup>?</sup></button>`;
+  return `<button type="button" class="help" data-help="${escapeAttr(text)}" aria-label="${escapeAttr(text)}" aria-expanded="false" aria-controls="help-tip"><sup>?</sup></button>`;
 }
 
 function setupHelp() {
@@ -1258,16 +1260,21 @@ function setupHelp() {
   let anchor = null;
 
   function showTip(button) {
+    if (anchor && anchor !== button) anchor.setAttribute("aria-expanded", "false");
     anchor = button;
+    button.setAttribute("aria-expanded", "true");
     tip.textContent = button.dataset.help || "";
     tip.hidden = false;
     placeTip();
   }
 
   function hideTip() {
+    if (anchor) anchor.setAttribute("aria-expanded", "false");
     anchor = null;
     tip.hidden = true;
   }
+
+  closeHelpTip = hideTip;
 
   function placeTip() {
     if (!anchor || !anchor.isConnected) {
@@ -1286,29 +1293,19 @@ function setupHelp() {
     tip.style.top = `${top}px`;
   }
 
-  document.addEventListener("pointerover", (event) => {
+  document.addEventListener("click", (event) => {
     const button = event.target.closest?.(".help");
-    if (button) showTip(button);
-  });
-
-  document.addEventListener("pointerout", (event) => {
-    const button = event.target.closest?.(".help");
-    if (!button || anchor !== button) return;
-    const next = event.relatedTarget;
-    if (next instanceof Node && button.contains(next)) return;
+    if (button) {
+      if (anchor === button) hideTip();
+      else showTip(button);
+      return;
+    }
+    if (event.target.closest?.("#help-tip")) return;
     hideTip();
   });
 
-  document.addEventListener("focusin", (event) => {
-    if (event.target.classList?.contains("help")) showTip(event.target);
-  });
-
-  document.addEventListener("focusout", (event) => {
-    if (event.target.classList?.contains("help")) hideTip();
-  });
-
-  document.addEventListener("pointerdown", (event) => {
-    if (event.target.closest?.(".help")) event.stopPropagation();
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideTip();
   });
 
   window.addEventListener("scroll", placeTip, true);
@@ -1360,3 +1357,5 @@ function escapeAttr(value) {
     .replaceAll("\"", "&quot;")
     .replaceAll("<", "&lt;");
 }
+
+setupHelp();
